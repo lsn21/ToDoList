@@ -39,8 +39,27 @@ class ToDoViewController: UIViewController, ToDoViewProtocol {
             completedSwitch.isOn = false
             datePicker.date = Date()
         }
+        // Создание кнопки для закрытия клавиатуры
+        let toolbar = UIToolbar()
+        toolbar.sizeToFit()
+        
+        let flexibleSpace = UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil)
+        let closeKeyboardButton = UIBarButtonItem(title: "Закрыть", style: .done, target: self, action: #selector(closeKeyboard))
+
+        // Добавление кнопки на панель
+        toolbar.items = [flexibleSpace, closeKeyboardButton]
+        
+        // Установка toolbar как inputAccessoryView для titleTextField и descriptionTextView
+        titleTextField.inputAccessoryView = toolbar
+        descriptionTextView.inputAccessoryView = toolbar
     }
     
+    @objc func closeKeyboard() {
+        // Закрытие клавиатуры
+        titleTextField.resignFirstResponder()
+        descriptionTextView.resignFirstResponder()
+    }
+
     @IBAction func cancelButtonTapped(_ sender: UIButton) {
         presenter.dismissNewTodo()
     }
