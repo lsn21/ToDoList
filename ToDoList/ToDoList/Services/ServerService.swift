@@ -1,56 +1,43 @@
 //
 //  ServerService.swift
-//  ToDoListMVC
+//  ToDoList
 //
-//  Created by SIARHEI LUKYANAU on 27.08.2024.
+//  Created by Siarhei Lukyanau on 17.08.25.
 //
 
 import Foundation
 
 protocol ServerServiceProtocol: AnyObject {
-    func fetchToDoData(from urlString: String, completion: @escaping (ToDoAnswer?) -> Void)
+    func fetchToDoData(from urlString: String) async throws -> ToDoAnswer?
 }
 
-class ServerService: NSObject, ServerServiceProtocol {
+actor ServerService: ServerServiceProtocol {
     
-    private override init() {}
-    
-    public static var shared = ServerService()
+    static let shared = ServerService()
 
-    func fetchToDoData(from urlString: String, completion: @escaping (ToDoAnswer?) -> Void) {
+    private init() {}
+
+    func fetchToDoData(from urlString: String) async throws -> ToDoAnswer? {
         guard let url = URL(string: urlString) else {
             print("Invalid URL.")
-            completion(nil)
-            return
+            return nil
         }
-        
-        let task = URLSession.shared.dataTask(with: url) { data, response, error in
-            // Проверяем наличие ошибок
-            if let error = error {
-                print("Error fetching data: \(error)")
-                completion(nil)
-                return
-            }
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
             
-            // Проверяем, есть ли данные
-            guard let data = data else {
-                print("No data received.")
-                completion(nil)
-                return
+            // Проверяем, является ли ответ успешным
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                print("Server error: \(response)")
+                return nil
             }
-            
             // Декодируем данные
-            do {
-                let decoder = JSONDecoder()
-                let answer = try decoder.decode(ToDoAnswer.self, from: data)
-                completion(answer)
-            } catch {
-                print("Error decoding JSON: \(error)")
-                completion(nil)
-            }
+            let decoder = JSONDecoder()
+            let answer = try decoder.decode(ToDoAnswer.self, from: data)
+            return answer
+            
+        } catch {
+            print("Error fetching or decoding data: \(error)")
+            return nil
         }
-        
-        task.resume()
     }
-    
 }

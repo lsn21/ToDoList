@@ -1,53 +1,60 @@
 //
 //  StorageService.swift
-//  ToDoListMVC
+//  ToDoList
 //
-//  Created by SIARHEI LUKYANAU on 27.08.2024.
+//  Created by Siarhei Lukyanau on 17.08.25.
 //
 
 import UIKit
 import CoreData
 
 protocol StorageServiceProtocol: AnyObject {
-    func loadTodos() -> [ToDoRecord]?
-    func saveTodos(_ toDoRecords: [ToDoRecord]?)
-    func addTodo(_ todo: ToDoRecord)
-    func updateTodo(_ todo: ToDoRecord)
-    func deleteTodo(_ id: Int)
-    func getNextId() -> Int
-    func setContext(_ context: NSManagedObjectContext)
+    func loadTodos() async -> [ToDoRecord]?
+    func saveTodos(_ toDoRecords: [ToDoRecord]?) async
+    func addTodo(_ todo: ToDoRecord) async
+    func updateTodo(_ todo: ToDoRecord) async
+    func deleteTodo(_ id: Int) async
+    func getNextId() async -> Int
 }
 
-class StorageService: NSObject, StorageServiceProtocol {
-    
-    private override init() {}
-    
-    public static var shared = StorageService()
-    
-    let appDelegate = UIApplication.shared.delegate as! AppDelegate
-    
+@MainActor
+class ContextManager {
+    static let shared = ContextManager()
     private var _context: NSManagedObjectContext?
     
-    // Используем контекст, если он установлен, иначе получаем из AppDelegate
-    var context: NSManagedObjectContext {
-        return _context ?? appDelegate.persistentContainer.viewContext
-    }
-    
-    // MARK: - Core Data methods
-    
-    // Устанавливаем контекст для тестирования
     func setContext(_ context: NSManagedObjectContext) {
         self._context = context
     }
     
-    // загружаем данные из БД
-    func loadTodos() -> [ToDoRecord]? {
+    func getContext() -> NSManagedObjectContext {
+        // Если _context уже инициализирован, возвращаем его
+        if let context = _context {
+            return context
+        }
+        // Если _context не инициализирован, получаем его из AppDelegate
+        guard let appDelegate = UIApplication.shared.delegate as? AppDelegate else {
+            fatalError("Не удалось получить AppDelegate.")
+        }
+        return appDelegate.persistentContainer.viewContext
+    }
+}
+
+actor StorageService: StorageServiceProtocol {
+    
+    static let shared = StorageService()
+    
+    private func getContext() async -> NSManagedObjectContext {
+        return await ContextManager.shared.getContext()
+    }
+    
+    // Загружаем данные из БД
+    func loadTodos() async -> [ToDoRecord]? {
         let request: NSFetchRequest<ToDoEntity> = ToDoEntity.fetchRequest()
         var toDoRecords = [ToDoRecord]()
 
         do {
-            var toDoEntities = [ToDoEntity]()
-            toDoEntities = try context.fetch(request)
+            let context = await getContext()
+            let toDoEntities = try context.fetch(request)
             toDoEntities.forEach { toDoEntity in
                 var toDoRecord = ToDoRecord()
                 toDoRecord.id = Int(toDoEntity.id)
@@ -63,9 +70,10 @@ class StorageService: NSObject, StorageServiceProtocol {
         return toDoRecords
     }
     
-    // сохраняем данные полученные с сервера в БД
-    func saveTodos(_ toDoRecords: [ToDoRecord]?) {
-        for todo in (toDoRecords ?? [ToDoRecord]()) {
+    // Сохраняем данные полученные с сервера в БД
+    func saveTodos(_ toDoRecords: [ToDoRecord]?) async {
+        let context = await getContext()
+        for todo in (toDoRecords ?? []) {
             let todoEntity = ToDoEntity(context: context)
             if let id = todo.id {
                 todoEntity.id = Int16(id)
@@ -82,8 +90,9 @@ class StorageService: NSObject, StorageServiceProtocol {
         }
     }
     
-    // добавляем новую запись в БД
-    func addTodo(_ todo: ToDoRecord) {
+    // Добавляем новую запись в БД
+    func addTodo(_ todo: ToDoRecord) async {
+        let context = await getContext()
         let todoEntity = ToDoEntity(context: context)
         if let id = todo.id {
             todoEntity.id = Int16(id)
@@ -99,28 +108,26 @@ class StorageService: NSObject, StorageServiceProtocol {
         }
     }
     
-    // обновляем существующую запись в БД
-    func updateTodo(_ todo: ToDoRecord) {
+    // Обновляем существующую запись в БД
+    func updateTodo(_ todo: ToDoRecord) async {
         if let id = todo.id {
             let fetchRequest: NSFetchRequest<ToDoEntity> = ToDoEntity.fetchRequest()
             fetchRequest.predicate = NSPredicate(format: "id == %d", id)
             
             do {
-                // Получаем массив существующих записей
+                let context = await getContext()
                 let existingTodos = try context.fetch(fetchRequest)
 
-                // Проверяем, найдена ли запись
                 if let todoEntity = existingTodos.first {
-                    // Обновляем атрибуты
                     todoEntity.todo = todo.todo ?? ""
                     todoEntity.descript = todo.description ?? ""
                     todoEntity.completed = todo.completed ?? false
                     todoEntity.date = todo.date ?? Date()
 
-                    // Сохраняем изменения
                     try context.save()
                     print("Задача обновлена.")
-                } else {
+                }
+                else {
                     print("Задача с id \(id) не найдена.")
                 }
             } catch {
@@ -129,25 +136,28 @@ class StorageService: NSObject, StorageServiceProtocol {
         }
     }
     
-    // удаляем запись в БД по id
-    func deleteTodo(_ id: Int) {
-        // Создаем запрос для поиска записи с заданным id
+    // Удаляем запись в БД по id
+    func deleteTodo(_ id: Int) async {
         let fetchRequest: NSFetchRequest<ToDoEntity> = ToDoEntity.fetchRequest()
         fetchRequest.predicate = NSPredicate(format: "id == %d", id)
 
         do {
-            // Получаем массив существующих записей
+            let context = await getContext()
             let existingTodos = try context.fetch(fetchRequest)
             
-            // Проверяем, найдена ли запись
             if let todoToDelete = existingTodos.first {
-                // Удаляем объект из контекста
                 context.delete(todoToDelete)
                 
-                // Сохраняем изменения
-                try context.save()
-                print("Задача с id \(id) удалена.")
-            } else {
+                if context.hasChanges {
+                    do {
+                        try context.save()
+                        print("Изменения сохранены. Задача с id \(id) удалена.")
+                    } catch {
+                        print("Ошибка при сохранении изменений: \(error.localizedDescription)")
+                    }
+                }
+            }
+            else {
                 print("Задача с id \(id) не найдена.")
             }
         } catch {
@@ -155,18 +165,19 @@ class StorageService: NSObject, StorageServiceProtocol {
         }
     }
     
-    // находим id для новой записи
-    func getNextId() -> Int {
+    // Асинхронный метод для нахождения id для новой записи
+    func getNextId() async -> Int {
         let fetchRequest: NSFetchRequest<NSFetchRequestResult> = ToDoEntity.fetchRequest()
         fetchRequest.resultType = .dictionaryResultType
         fetchRequest.propertiesToFetch = ["id"]
         fetchRequest.sortDescriptors = [NSSortDescriptor(key: "id", ascending: false)]
-        fetchRequest.fetchLimit = 1  // Ограничиваем выборку до одной записи
+        fetchRequest.fetchLimit = 1
 
         do {
+            let context = await getContext()
             let results = try context.fetch(fetchRequest)
             if let lastId = results.first as? [String: Any], let id = lastId["id"] as? Int16 {
-                return Int(id) + 1 // Увеличиваем максимальный id на 1
+                return Int(id) + 1
             }
         } catch {
             print("Ошибка при получении максимального id: \(error)")

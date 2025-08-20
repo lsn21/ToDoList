@@ -2,7 +2,7 @@
 //  SceneDelegate.swift
 //  ToDoList
 //
-//  Created by SIARHEI LUKYANAU on 26.08.2024.
+//  Created by Siarhei Lukyanau on 17.08.25.
 //
 
 import UIKit
