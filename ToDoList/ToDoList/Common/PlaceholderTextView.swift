@@ -2,7 +2,8 @@
 //  PlaceholderTextView.swift
 //  ToDoList
 //
-//  Created by Siarhei Lukyanau on 19.08.25.
+//  Created by Siarhei Lukyanau on 17.08.25.
+//  telegram: @LSN777, email: LSN21@YA.RU
 //
 
 import UIKit

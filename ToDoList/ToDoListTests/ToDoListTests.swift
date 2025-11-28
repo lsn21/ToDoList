@@ -3,6 +3,7 @@
 //  ToDoListTests
 //
 //  Created by Siarhei Lukyanau on 17.08.25.
+//  telegram: @LSN777, email: LSN21@YA.RU
 //
 
 import XCTest
